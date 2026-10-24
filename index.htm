@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>微软账号纯前端登录测试</title>
+    <!-- 引入微软官方 MSAL 浏览器端安全认证库 -->
+    <script src="https://msauth.net"></script>
+</head>
+<body>
+    <h2>微软 OAuth 2.0 纯静态页面登录</h2>
+    
+    <button id="loginBtn" onclick="signIn()">点击登录微软账号</button>
+    <button id="logoutBtn" onclick="signOut()" style="display:none;">退出登录</button>
+
+    <div id="profile" style="margin-top: 20px; display: none;">
+        <h3>登录成功！</h3>
+        <p><strong>用户姓名：</strong> <span id="userName"></span></p>
+        <p><strong>用户邮箱：</strong> <span id="userEmail"></span></p>
+        <p><strong>Access Token (已成功获取):</strong></p>
+        <textarea id="tokenBox" rows="10" cols="80" readonly></textarea>
+    </div>
+
+    <script>
+        // 1. 微软 MSAL 配置（请将以下参数替换为你自己在 Azure 后台申请的）
+        const msalConfig = {
+            auth: {
+                clientId: "1950a258-227b-4e31-a9cf-717495945fc2", // 必填：在 Azure Portal 注册后生成的 Client ID
+                authority: "https://microsoftonline.com", // common 支持个人账号和组织账号
+                redirectUri: window.location.origin + window.location.pathname // 动态获取当前静态页面的 URL 作为回调
+            },
+            cache: {
+                cacheLocation: "sessionStorage", // 令牌缓存位置
+                storeAuthStateInCookie: false,
+            }
+        };
+
+        // 2. 初始化 MSAL 实例
+        const myMSALObj = new msal.PublicClientApplication(msalConfig);
+
+        // 请求的权限作用域
+        const loginRequest = {
+            scopes: ["User.Read"]
+        };
+
+        // 页面加载时自动处理登录回调（必须）
+        myMSALObj.handleRedirectPromise()
+            .then(handleResponse)
+            .catch(err => { console.error(err); });
+
+        // 3. 登录动作（使用重定向方式，最适合移动端和绝大多数浏览器）
+        function signIn() {
+            myMSALObj.loginRedirect(loginRequest);
+        }
+
+        // 4. 处理登录成功后的返回结果
+        function handleResponse(response) {
+            if (response !== null) {
+                showProfile(response);
+            } else {
+                // 如果没有检测到回调，检查当前是否有已经登录过的缓存账号
+                const currentAccounts = myMSALObj.getAllAccounts();
+                if (currentAccounts.length > 0) {
+                    // 有缓存账号，直接静默获取 token
+                    myMSALObj.acquireTokenSilent({
+                        ...loginRequest,
+                        account: currentAccounts[0]
+                    }).then(showProfile).catch(err => {
+                        console.log("静默获取失败，需要重新点击登录");
+                    });
+                }
+            }
+        }
+
+        // 5. 渲染用户信息和展示 Token
+        function showProfile(response) {
+            document.getElementById("loginBtn").style.display = "none";
+            document.getElementById("logoutBtn").style.display = "inline";
+            document.getElementById("profile").style.display = "block";
+
+            document.getElementById("userName").innerText = response.account.name;
+            document.getElementById("userEmail").innerText = response.account.username;
+            
+            // ⭐️ 这就是你梦寐以求的 Access Token！
+            document.getElementById("tokenBox").value = response.accessToken; 
+            
+            console.log("获取到的 Token：", response.accessToken);
+        }
+
+        // 6. 登出动作
+        function signOut() {
+            const logoutRequest = {
+                account: myMSALObj.getAccountByUsername(document.getElementById("userEmail").innerText),
+                postLogoutRedirectUri: window.location.origin + window.location.pathname
+            };
+            myMSALObj.logoutRedirect(logoutRequest);
+        }
+    </script>
+</body>
+</html>
